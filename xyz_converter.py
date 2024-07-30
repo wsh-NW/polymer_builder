@@ -3,8 +3,8 @@ import pandas as pd
 """## STARTING VARIABLES- EDIT FOR EACH UNIQUE RUN ##"""
 starting_atom_type = 2 # ensures proper atom typing (e.g. {Pt: 1, Ni: 2, C:3, H:4})
 atoms_list = ['C', 'H']
-xyz_file = "../C25.xyz"
-txt_file = "../C25_polym.txt"
+xyz_file = "../Old_Files/C25.xyz"
+txt_file = "../Old_Files/C25_polym.txt"
 num_skip_rows = 2
 
 ##################################################################################################

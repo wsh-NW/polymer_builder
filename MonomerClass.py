@@ -1,22 +1,20 @@
 import numpy as np
 
-import MonomerClass
-
-
 class Monomer:
     CH_len = 107 # pm (class attribute)
     CC_len = 153
     HCH_angle = 109.5
 
-    def __init__(self, carbonPosition: list, adjacentCarbons: [MonomerClass.Monomer, MonomerClass.Monomer]):
+    def __init__(self, carbonPosition: list, hydrogenPositions: list):
         """
-        :param list carbonPosition: list of carbon positions
-        :param list of Monomer adjacentCarbons:
+        simple monomer class with Carbon and hydrogen positions
         """
         self.weights = [12.011, 1.008, 1.008]
         self.C1 = np.array(carbonPosition)
-        self.C2obj, self.C3obj = adjacentCarbons
-        self.H1, self.H2 = self.generate_hydrogen_positions(np.array(adjacentCarbons))
+        self.H1, self.H2 = hydrogenPositions
+
+    def return_C1
+
 
     def generate_hydrogen_positions(self, C2obj: MonomerClass.Monomer, C3obj: MonomerClass.Monomer) -> (np.array, np.array):
         adjC = [C2obj.C1, C3obj.C1]
@@ -31,25 +29,6 @@ class Monomer:
             h2 = h1 - 2 * zi * np.cos(self.HCH_angle)
             return h1 * self.CH_len + self.C1, h2 * self.CH_len + self.C1
 
-        elif len(adjC) == 1:
-
-
-
-        else:
-
-        return [[], []]
-
-    def add_C1_to_previous_carbonC2(self):
-        self.C2obj.assign_C3(self)
-
-    def assign_C3(self, C3: MonomerClass.Monomer):
-        self.C3obj = C3
-
-    def get_coordinates(self):
-        return self.C1 + self.H1 + self.H2
-
-    def get_weight(self):
-        return sum(self.weights)
 
 if __name__ == "__main__":
     CH2 = Monomer([0, 0])
