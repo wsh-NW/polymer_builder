@@ -27,6 +27,7 @@ class Polymer:
         self.weight = Cn * (12.011 + 2 * 1.008)
         # continuously updated lists
         self.carbon_list = []
+        self.hydrogen_list = []
         self.CH_positions = []
         self.polymerObjects = []
         # CREATING POLYMER
