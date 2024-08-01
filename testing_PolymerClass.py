@@ -1,5 +1,6 @@
 import numpy as np
 from PolymerClass import Polymer  # Import the Polymer class
+import Utility_Functions as uf
 
 
 def test_unit_basis_3pts():
@@ -22,7 +23,7 @@ def test_unit_basis_3pts():
     v_expected = np.array([0.0, 0.0, 1.0])
 
     # Run the method
-    k, w, v = polymer._unit_basis_3pts(left_center_right)
+    k, w, v = uf.unit_basis_3pts(left_center_right)
 
     # Check the results
     assert np.allclose(k, k_expected), f"Expected k: {k_expected}, but got: {k}"
@@ -37,18 +38,20 @@ def test_rodrigues_rotation():
     END with y axis
     :return: NULL
     """
-    # input arrow > along xz
     x = np.array([1, 0, 0])
     z = np.array([0, 0, 1])
     y = np.array([0, 1, 0])
 
-    # Run the method
-    y_expected = Polymer._rodrigues_rotation(90, x, z)
+    y_test = uf.rodrigues_rotation(90, x, z)
+    y_rot = uf.rodrigues_rotation(109.5, y, z)
+    angle_rot = uf.angle_2vecs([y_rot, y])
 
     # Check the results
-    assert np.allclose(y, y_expected), f"Expected k: {y_expected}, but got: {y}"
+    assert np.allclose(y, y_test), f"Expected k: {y_test}, but got: {y}"
+    assert np.isclose(109.5, angle_rot), f"Expected 109.5 degrees, but got: {angle_rot}"
 
     print("All tests passed.")
+
 
 
 # Run the test

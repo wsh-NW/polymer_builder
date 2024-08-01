@@ -1,5 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
+import Utility_Functions as uf
+import math
 
 # TODO BUGS: fix terminal hydrogens, understand overlap cutoff- will it be accurate with multiple polymer chains
 # TODO CONTINUE: add new class to build multiple polymers and a script to print out positions for lammps
@@ -63,7 +65,7 @@ class Polymer:
     def _add_carbon(self, curr_pos: np.array):
         for retry in range(self.attempts):
             if len(self.carbon_list) == 1:
-                v = Polymer._generate_random_unit_vector()
+                v = uf.generate_random_unit_vector()
             else:
                 v = self._generate_random_unit_vector_equil_angle(self.carbon_list[-2:])
             v_CC = v * self.CC_len
@@ -91,30 +93,30 @@ class Polymer:
         generates a hydrogen list overlayed on the carbon backbone
         :return:
         """
-        def _add3h(c_list: list[np.ndarray]) -> list[np.ndarray]:
+        def _add3h(ccc: list[np.ndarray]) -> list[np.ndarray]:
             """
-            generates three carbons at end or beginning of chain with least sterics
+            generates three hydrogens at end or beginning of chain with least sterics
             ** to generate hydrogen with least sterics, uses c1c2c3 to generate ortho ccc vector w
-            :param c_list: first last three carbons starting with terminal carbon
+            :param ccc: first last three carbons starting with terminal carbon
             :return: list of hydrogens
             """
-            c1, c2, c3 = c_list
-            ccc_point, rot_axis, v = Polymer._unit_basis_3pts(c_list)
-            unit_h1 = Polymer._unit_v(Polymer._rodrigues_rotation(self.tetrahedral, rot_axis, c2 - c1))
+            c1, c2, c3 = ccc
+            ccc_point, rot_axis, v = uf.unit_basis_3pts(ccc)
+            unit_h1 = uf.unit_v(uf.rodrigues_rotation(self.tetrahedral, c2 - c1, rot_axis))
             if np.dot(unit_h1, ccc_point) < 0: # test if it is correct orientation, otherwise flip
                 unit_h1 = -unit_h1
-            h1 = unit_h1 * self.CH_len + c_list[0]
+            h1 = unit_h1 * self.CH_len + c1
             # other hydrogens rotate h1 around c1-c2 bond
-            h2 = Polymer._unit_v(Polymer._rodrigues_rotation(self.tetrahedral, c2 - c1, h1)) * self.CH_len + c_list[0]
-            h3 = Polymer._unit_v(Polymer._rodrigues_rotation(-self.tetrahedral, c2 - c1, h1)) * self.CH_len + c_list[0]
+            h2 = uf.unit_v(uf.rodrigues_rotation(self.tetrahedral, unit_h1, c2 - c1)) * self.CH_len + c1
+            h3 = uf.unit_v(uf.rodrigues_rotation(-self.tetrahedral, unit_h1, c2 - c1)) * self.CH_len + c1
             return [h1, h2, h3]
 
         def _add2h(c_list: list[np.ndarray]) -> list[np.ndarray]:
             c1, c2, c3 = c_list
-            ccc_arrow, w, rot_axis = Polymer._unit_basis_3pts(c_list)
-            unit_h1 = Polymer._unit_v(Polymer._rodrigues_rotation(self.HCH_angle / 2, ccc_arrow, rot_axis))
+            ccc_arrow, w, rot_axis = uf.unit_basis_3pts(c_list)
+            unit_h1 = uf.unit_v(uf.rodrigues_rotation(self.HCH_angle / 2, ccc_arrow, rot_axis))
             h1 = unit_h1 * self.CH_len + c_list[1]
-            unit_h2 = Polymer._unit_v(Polymer._rodrigues_rotation(-self.HCH_angle / 2, ccc_arrow, rot_axis))
+            unit_h2 = uf.unit_v(uf.rodrigues_rotation(-self.HCH_angle / 2, ccc_arrow, rot_axis))
             h2 = unit_h2 * self.CH_len + c_list[1]
             return [h1, h2]
 
@@ -136,20 +138,6 @@ class Polymer:
 
 ########################################################################################################################
     """UTILITY FUNCTIONS- NONACCESSIBLE"""
-    @staticmethod
-    def _generate_random_unit_vector() -> np.array:
-        """
-        generates random unit vector (r=1) with phi and theta
-        Source: https://stackoverflow.com/questions/5408276/sampling-uniformly-distributed-random-points-inside-a-spherical-volume
-        :return: random unit vector
-        """
-        phi = np.random.uniform(0, 2 * np.pi) # phi = random(0,2pi)
-        costheta = np.random.uniform(-1, 1) # costheta = random(-1,1)
-        theta = np.arccos(costheta)
-        x = np.sin(theta) * np.cos(phi)
-        y = np.sin(theta) * np.sin(phi)
-        z = np.cos(theta)
-        return np.array([x, y, z])
 
     def _generate_random_unit_vector_equil_angle(self, c1c2: list[np.ndarray]) -> np.ndarray:
         """
@@ -162,60 +150,11 @@ class Polymer:
         :return: random unit vector within angle_error range
         """
         angle_werror = np.random.uniform(self.CCC_angle - self.angle_dev, self.CCC_angle + self.angle_dev)
-        ghost_carbon = Polymer._generate_random_unit_vector() * self.CC_len + self.carbon_list[-1]
-        k, rotate_axis, v = Polymer._unit_basis_3pts(self.carbon_list[-2:] + [ghost_carbon])
+        ghost_carbon = uf.generate_random_unit_vector() * self.CC_len + self.carbon_list[-1]
+        k, rotate_axis, v = uf.unit_basis_3pts(self.carbon_list[-2:] + [ghost_carbon])
         rotate_this = c1c2[-2] - c1c2[-1] # rotates about the last Catom on the axis ortho CCC
-        new_carbon = Polymer._rodrigues_rotation(angle_werror, rotate_this, rotate_axis)
-        return Polymer._unit_v(new_carbon)
-
-    @staticmethod
-    def _unit_v(v: np.ndarray) -> np.ndarray:
-        return v / np.linalg.norm(v)
-
-    @staticmethod
-    def _unit_basis_3pts(left_center_right: list[np.ndarray]) -> list[np.ndarray]:
-        """
-        creates unit vectors from an isoceles triangle:
-        [k: points upwards out of triangle, w: orthogonal to C-C-C, v: crossproduct(k, w)]
-        ** assumes isosceles triangle
-        :param list[np.ndarray] left_center_right: 3 carbons, input from add_H function
-        :return: list[np.ndarray] [upwards unit vector on center carbon, vector orthogonal to C-C-C plane]
-        """
-        c1, c2, c3 = left_center_right
-        c2c1 = c2 - c1
-        c2c3 = c2 - c3
-        k = Polymer._unit_v(c2c1 + c2c3) # axis to rotate H's off of
-        w = Polymer._unit_v(np.cross(c2c1, c2c3)) # axis orthogonal to c-c-c plane
-        v = np.cross(w, k) # axis completing rank 3 matrix
-        return [k, w, v]
-
-    @staticmethod
-    def _rodrigues_rotation(angle: float, v: np.ndarray, w: np.ndarray) -> np.ndarray:
-        """
-        rotates about vector <v> about <w> axis <angle> degrees
-        :param angle: given in degrees
-        :param v: vector to rotate
-        :param w: vertical axis to rotate about
-        :return: rotated vector
-        Source: https://stackoverflow.com/questions/6802577/rotation-of-3d-vector
-        Information: https://www.youtube.com/watch?v=q-ESzg03mQc&list=PLpzmRsG7u_gr0FO12cBWj-15_e0yqQQ1U&index=5
-        """
-        return np.dot(Polymer._rotation_matrix(w, angle), v)
-
-    @staticmethod
-    def _rotation_matrix(axis: np.ndarray, theta: float):
-        """
-        Return the rotation matrix associated with counterclockwise rotation about the given axis by theta degrees.
-        """
-        axis = Polymer._unit_v(axis)
-        theta = theta * np.pi / 180 # converting to radians
-        a = np.cos(theta / 2.0)
-        b, c, d = -axis * np.sin(theta / 2.0)
-        aa, bb, cc, dd = a * a, b * b, c * c, d * d
-        bc, ad, ac, ab, bd, cd = b * c, a * d, a * c, a * b, b * d, c * d
-        return np.array([[aa + bb - cc - dd, 2 * (bc + ad), 2 * (bd - ac)],
-                         [2 * (bc - ad), aa + cc - bb - dd, 2 * (cd + ab)],
-                         [2 * (bd + ac), 2 * (cd - ab), aa + dd - bb - cc]])
+        new_carbon = uf.rodrigues_rotation(angle_werror, rotate_this, rotate_axis)
+        return uf.unit_v(new_carbon)
 
 ########################################################################################################################
     """RETURNING FUNCTIONS- ACCESSIBLE TO USER"""
@@ -246,7 +185,7 @@ class Polymer:
         """
         # carbon backbone plotted
         x_label, y_label, z_label = "x (A)", "y (A)", "z (A)"
-        x, y, z = Polymer.convert_xyz(self.carbon_list)
+        x, y, z = uf.convert_xyz(self.carbon_list)
 
         fig = plt.figure()
         ax = fig.add_subplot(111, projection='3d')
@@ -261,24 +200,19 @@ class Polymer:
         for i, c in enumerate(self.carbon_list):
             if i == 0:
                 for h in self.hydrogen_list[0:3]:
-                    x, y, z = Polymer.convert_xyz([h] + [c])
+                    x, y, z = uf.convert_xyz([h] + [c])
                     plt.plot(x, y, z, marker="o")
-            elif i == len(self.carbon_list):
+            elif i == len(self.carbon_list) - 1:
                 for h in self.hydrogen_list[-3:]:
-                    x, y, z = Polymer.convert_xyz([h] + [c])
+                    x, y, z = uf.convert_xyz([h] + [c])
                     plt.plot(x, y, z, marker="o")
             else:
-                x, y, z = Polymer.convert_xyz([self.hydrogen_list[h_index], c, self.hydrogen_list[h_index + 1]])
+                x, y, z = uf.convert_xyz([self.hydrogen_list[h_index], c, self.hydrogen_list[h_index + 1]])
                 plt.plot(x, y, z, marker="o")
                 h_index += 2
 
         plt.show()
 
-    @staticmethod
-    def convert_xyz(list_of_points: list[np.ndarray]):
-        array3d = np.array(list_of_points)
-        x, y, z = array3d[:, 0], array3d[:, 1], array3d[:, 2]
-        return x, y, z
 
 
 ########################################################################################################################
