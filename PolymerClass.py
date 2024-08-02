@@ -3,9 +3,8 @@ import matplotlib.pyplot as plt
 import Utility_Functions as uf
 import math
 
-# TODO BUGS: fix terminal hydrogens, understand overlap cutoff- will it be accurate with multiple polymer chains
-# TODO CONTINUE: add new class to build multiple polymers and a script to print out positions for lammps
-# TODO FURTHER: include Pt and make realistic for box
+# TODO: add script to print out positions for lammps
+# TODO CONTINUE: include Pt and make realistic for box
 
 class Polymer:
     """
@@ -18,81 +17,113 @@ class Polymer:
     HCH_angle = 107
     tetrahedral = 109.5 # angle used for terminal hydrogens
     angle_dev = 20 # deviation from perfect CCC angle
-    attempts = 50
-    overlap_cutoff = 1.5
+    attempts = 100
+    overlap_cutoff = 1.5 # 1.5 # applies to internal C-C (chain formation) and intra C-C/H interactions
+
+    """TROUBLE SHOOTING"""
+    length_distribution = []
 
 ########################################################################################################################
-    """INITIALIZING PARAMETERS FOR CARBON CHAIN"""
-    def __init__(self, Cn: int, box_boundaries: list):
+    """BUILDING FUNCTIONS FOR CARBON CHAIN"""
+    def __init__(self, Cn: int, box_boundaries: list, atom_positions=None):
         """
         Initialize polymer chain
         :param int Cn: carbon count
         :param list box_boundaries: box limits [-x, x, -y, y, -z, z]
+        :param list atom_positions: all atoms within box
         """
         # initial variables
-        self.blim = box_boundaries
+        self.blim = [box_boundaries[i] + self.overlap_cutoff * (-1) ** i for i in range(6)] # box limits with overlap cutoff
         self.boxLengths = np.array([self.blim[i + 1] - self.blim[i] for i in range(0, len(self.blim), 2)])
         self.Cn = Cn
         self.Rg = 0
         self.weight = Cn * (12.011 + 2 * 1.008)
-        # continuously updated lists
+        if atom_positions is None:
+            atom_positions = []
+        else:
+            self.atom_positions = atom_positions
+
+        # continuously updated lists and variables
+        self.good_poly_build = True
         self.carbon_list = []
         self.hydrogen_list = []
-        self.CH_positions = []
-        self.polymerObjects = []
-        # CREATING POLYMER
+
+        """BUILDING POLYMER"""
         self._build_carbon_chain()
         self._add_hydrogens()
+
 
     def _build_carbon_chain(self):
         """
         picks random point within box limits then adds carbons within an overlap_cutoff
+        ** stops adding if carbon is not able to be added within max attempts
         :return null:
         """
-        C_start_pos = np.random.rand(3) * self.boxLengths + np.array([self.blim[0], self.blim[2], self.blim[4]])
-        self.carbon_list.append(C_start_pos)
-        curr_C = C_start_pos
-        for n in range(self.Cn):
-            if not self._add_carbon(curr_C):
-                print(f"Max attempts to add C{n} reached. Please try again")
-                return
-            else:
-                curr_C = self.carbon_list[-1]
-
-        print("carbon chain successfully built")
-
-
-    def _add_carbon(self, curr_pos: np.array):
         for retry in range(self.attempts):
-            if len(self.carbon_list) == 1:
+            c_start_pos = np.array([np.random.uniform(self.blim[i], self.blim[i+1]) for i in range(0, 6, 2)])
+            temp_c_list = [c_start_pos]
+            curr_c = c_start_pos
+            for n in range(self.Cn):
+                add_successful = self._add_carbon(curr_c, temp_c_list)
+                if (add_successful):
+                    curr_c = temp_c_list[-1]
+                else:
+                    break
+            self.length_distribution += [len(temp_c_list)]
+            if len(temp_c_list) == self.Cn:
+                self.carbon_list = temp_c_list
+                return
+        if not self.carbon_list:
+            self.good_poly_build = False
+
+        # print("carbon chain successfully built")
+
+
+    def _add_carbon(self, curr_pos: np.array, temp_c_list: list[np.ndarray]):
+        """
+        adds carbon if it fulfills the requirements in check_newC. If max attempts reached, makes good_poly_build false
+        :param curr_pos:
+        :return:
+        """
+        for retry in range(np.floor_divide(self.attempts, 5)):
+            if len(temp_c_list) == 1:
                 v = uf.generate_random_unit_vector()
             else:
-                v = self._generate_random_unit_vector_equil_angle(self.carbon_list[-2:])
+                v = self._generate_random_unit_vector_equil_angle(temp_c_list[-2:])
             v_CC = v * self.CC_len
             new_pos = curr_pos + v_CC
             if self._check_newC(curr_pos, new_pos):
-                self.carbon_list.append(new_pos)
+                temp_c_list.append(new_pos)
                 return True
         return False
 
-    def _check_newC(self, curr_pos: np.array, new_pos: np.array) -> bool:
-        def check_inbounds() -> bool:
-            x, y, z = curr_pos
-            x1, x2, y1, y2, z1, z2 = self.blim
-            return (x1 < x < x2) and (y1 < y < y2) and (z1 < z < z2)
-
-        def no_prevC_overlap() -> bool:
-            return np.linalg.norm(new_pos - curr_pos) > self.overlap_cutoff
-
-        return check_inbounds() and no_prevC_overlap()
+    def _generate_random_unit_vector_equil_angle(self, c1c2: list[np.ndarray]) -> np.ndarray:
+        """
+        generates unit vector that satisfies equilibrium angle +∆error away from current C-C
+        ** start with a ghost carbon to generate random w_hat (ortho CCC)
+        ** ∆error specified in class variable self.HCH_angle and angle_dev
+        -> then rotate original vector along that plane with an equilibrium angle + ∆error
+        Rotation Source: https://stackoverflow.com/questions/6802577/rotation-of-3d-vector
+        :param c1c2: carbons used to generate third carbon unit vector. Rotation around C2
+        :return: random unit vector within angle_error range
+        """
+        angle_werror = np.random.uniform(self.CCC_angle - self.angle_dev, self.CCC_angle + self.angle_dev)
+        ghost_carbon = uf.generate_random_unit_vector() * self.CC_len + c1c2[-1]
+        k, rotate_axis, v = uf.unit_basis_3pts(c1c2[-2:] + [ghost_carbon])
+        rotate_this = c1c2[-2] - c1c2[-1] # rotates about the last Catom on the axis ortho CCC
+        new_carbon = uf.rodrigues_rotation(angle_werror, rotate_this, rotate_axis)
+        return uf.unit_v(new_carbon)
 
 ########################################################################################################################
     """ADDING HYDROGENS"""
     def _add_hydrogens(self):
         """
-        generates a hydrogen list overlayed on the carbon backbone
+        generates a hydrogen list overlayed on the carbon backbone if carbon backbone is complete
         :return:
         """
+        if not self.check_poly_build():
+            return
+
         def _add3h(ccc: list[np.ndarray]) -> list[np.ndarray]:
             """
             generates three hydrogens at end or beginning of chain with least sterics
@@ -133,86 +164,44 @@ class Polymer:
                 hydrogen_list += _add2h(c_list)
 
         self.hydrogen_list = hydrogen_list
-        print("hydrogens successfully added")
-
-
-########################################################################################################################
-    """UTILITY FUNCTIONS- NONACCESSIBLE"""
-
-    def _generate_random_unit_vector_equil_angle(self, c1c2: list[np.ndarray]) -> np.ndarray:
-        """
-        generates unit vector that satisfies equilibrium angle +∆error away from current C-C
-        ** start with a ghost carbon to generate random w_hat (ortho CCC)
-        ** ∆error specified in class variable self.HCH_angle and angle_dev
-        -> then rotate original vector along that plane with an equilibrium angle + ∆error
-        Rotation Source: https://stackoverflow.com/questions/6802577/rotation-of-3d-vector
-        :param c1c2: carbons used to generate third carbon unit vector. Rotation around C2
-        :return: random unit vector within angle_error range
-        """
-        angle_werror = np.random.uniform(self.CCC_angle - self.angle_dev, self.CCC_angle + self.angle_dev)
-        ghost_carbon = uf.generate_random_unit_vector() * self.CC_len + self.carbon_list[-1]
-        k, rotate_axis, v = uf.unit_basis_3pts(self.carbon_list[-2:] + [ghost_carbon])
-        rotate_this = c1c2[-2] - c1c2[-1] # rotates about the last Catom on the axis ortho CCC
-        new_carbon = uf.rodrigues_rotation(angle_werror, rotate_this, rotate_axis)
-        return uf.unit_v(new_carbon)
+        print("Polymer successfully built!")
 
 ########################################################################################################################
-    """RETURNING FUNCTIONS- ACCESSIBLE TO USER"""
+    """RETURN AND VALIDATION FUNCTIONS - RETURN FUNCTIONS ACCESSIBLE TO USER"""
+    """ **check if Polymer was built correctly under specific constraints** """
 
-    def plot_carbon_positions(self) -> list[np.array]:
-        """
-        returns n list of carbon positions: array[x,y,z]
-        :return: list of 3D np.arrays
-        """
-        array3d = np.array(self.carbon_list)
-        x_label, y_label, z_label = "x (A)", "y (A)", "z (A)"
-        x, y, z = array3d[:, 0], array3d[:, 1], array3d[:, 2]
+    def check_poly_build(self):
+        return self.good_poly_build
 
-        fig = plt.figure()
-        ax = fig.add_subplot(111, projection='3d')
-        ax.plot(x, y, z, marker='o')
-        ax.set_xlabel(x_label)
-        ax.set_ylabel(y_label)
-        ax.set_zlabel(z_label)
-        plt.title("carbon backbone")
-        plt.show()
+    def return_carbons(self):
         return self.carbon_list
 
-    def plot_Polymer_CH2(self):
+    def return_hydrogens(self):
+        return self.hydrogen_list
+
+    def _check_newC(self, prev_c: np.array, new_c: np.array) -> bool:
         """
-        plots carbons and hydrogens
-        :return: none
+        checks new carbon against box boundaries, previous carbon, and all existing atoms in simulation box
+        :param prev_c: 
+        :param new_c: 
+        :return: 
         """
-        # carbon backbone plotted
-        x_label, y_label, z_label = "x (A)", "y (A)", "z (A)"
-        x, y, z = uf.convert_xyz(self.carbon_list)
+        def check_inbounds() -> bool:
+            x, y, z = prev_c
+            x1, x2, y1, y2, z1, z2 = self.blim
+            return (x1 < x < x2) and (y1 < y < y2) and (z1 < z < z2)
 
-        fig = plt.figure()
-        ax = fig.add_subplot(111, projection='3d')
-        ax.plot(x, y, z, marker='o')
-        ax.set_xlabel(x_label)
-        ax.set_ylabel(y_label)
-        ax.set_zlabel(z_label)
-        plt.title("CH2 Backbone")
+        """def no_prevC_overlap() -> bool: # no longer need after angle correction
+            return np.linalg.norm(new_c - prev_c) > self.overlap_cutoff"""
 
-        # hydrogens plotting (units of CH2 and CH3 connected)
-        h_index = 3 # start on
-        for i, c in enumerate(self.carbon_list):
-            if i == 0:
-                for h in self.hydrogen_list[0:3]:
-                    x, y, z = uf.convert_xyz([h] + [c])
-                    plt.plot(x, y, z, marker="o")
-            elif i == len(self.carbon_list) - 1:
-                for h in self.hydrogen_list[-3:]:
-                    x, y, z = uf.convert_xyz([h] + [c])
-                    plt.plot(x, y, z, marker="o")
-            else:
-                x, y, z = uf.convert_xyz([self.hydrogen_list[h_index], c, self.hydrogen_list[h_index + 1]])
-                plt.plot(x, y, z, marker="o")
-                h_index += 2
+        def check_allatoms() -> bool:
+            for atom in self.atom_positions:
+                dist_atom_newc = np.linalg.norm(atom - new_c)
+                if dist_atom_newc < self.overlap_cutoff:
+                    return False
+            return True
 
-        plt.show()
-
+        return check_inbounds() and check_allatoms()
 
 
 ########################################################################################################################
@@ -222,6 +211,5 @@ if __name__ == "__main__":
     num_units = 10
     box_boundaries = [-18, 18, -18, 18, 7, 45]
     polyethylene = Polymer(num_units, box_boundaries)
-    # c_posns = polyethylene.return_and_plot_carbon_positions()
-    polyethylene.plot_carbon_positions()
-    polyethylene.plot_Polymer_CH2()
+    uf.plot_carbon_positions(polyethylene.return_carbons())
+    uf.plot_Polymer_CH2(polyethylene.return_carbons(), polyethylene.return_hydrogens())

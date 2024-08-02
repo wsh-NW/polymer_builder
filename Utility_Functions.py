@@ -1,7 +1,8 @@
 import numpy as np
+import matplotlib.pyplot as plt
 
-""" MATH FUNCTIONS"""
 ########################################################################################################################
+""" MATH FUNCTIONS"""
 
 def unit_v(v: np.ndarray) -> np.ndarray:
     return v / np.linalg.norm(v)
@@ -74,6 +75,103 @@ def convert_xyz(list_of_points: list[np.ndarray]):
 def angle_2vecs(vecs: list[np.ndarray]):
     return np.arccos(np.clip(np.dot(unit_v(vecs[0]), unit_v(vecs[1])), -1.0, 1.0)) * 180/np.pi
 
-""" PLOTTING FUNCTIONS """
-########################################################################################################################
 
+########################################################################################################################
+""" PLOTTING FUNCTIONS """
+
+def plot_carbon_positions(carbon_list):
+    """
+    returns n list of carbon positions: array[x,y,z]
+    :return: list of 3D np.arrays
+    """
+    array3d = np.array(carbon_list)
+    x_label, y_label, z_label = "x (A)", "y (A)", "z (A)"
+    x, y, z = array3d[:, 0], array3d[:, 1], array3d[:, 2]
+
+    fig = plt.figure()
+    ax = fig.add_subplot(111, projection='3d')
+    ax.plot(x, y, z, marker='o')
+    ax.set_xlabel(x_label)
+    ax.set_ylabel(y_label)
+    ax.set_zlabel(z_label)
+    plt.title("carbon backbone")
+    plt.show()
+
+
+def plot_Polymer_CH2(carbon_list, hydrogen_list):
+    """
+    plots carbons and hydrogens
+    :return: none
+    """
+    if not hydrogen_list:
+        print("carbon backbone not complete, hydrogens not added")
+
+    # carbon backbone plotted
+    x_label, y_label, z_label = "x (A)", "y (A)", "z (A)"
+    x, y, z = convert_xyz(carbon_list)
+
+    fig = plt.figure()
+    ax = fig.add_subplot(111, projection='3d')
+    ax.plot(x, y, z, marker='o')
+    ax.set_xlabel(x_label)
+    ax.set_ylabel(y_label)
+    ax.set_zlabel(z_label)
+    plt.title("CH2 Backbone")
+
+    # hydrogens plotting (units of CH2 and CH3 connected)
+    h_index = 3  # start on
+    for i, c in enumerate(carbon_list):
+        if i == 0:
+            for h in hydrogen_list[0:3]:
+                x, y, z = convert_xyz([h] + [c])
+                plt.plot(x, y, z, marker="o")
+        elif i == len(carbon_list) - 1:
+            for h in hydrogen_list[-3:]:
+                x, y, z = convert_xyz([h] + [c])
+                plt.plot(x, y, z, marker="o")
+        else:
+            x, y, z = convert_xyz([hydrogen_list[h_index], c, hydrogen_list[h_index + 1]])
+            plt.plot(x, y, z, marker="o")
+            h_index += 2
+
+    plt.show()
+
+def plot_multiple_polymers(cn, hn, hydrogen_plotting=True):
+    """
+    plots carbons and hydrogens
+    :return: none
+    """
+    fig = plt.figure()
+    ax = fig.add_subplot(111, projection='3d')
+    x_label, y_label, z_label = "x (A)", "y (A)", "z (A)"
+    ax.set_xlabel(x_label)
+    ax.set_ylabel(y_label)
+    ax.set_zlabel(z_label)
+    plt.title("Polymer Melt")
+
+    #iterate over polymers
+    for n in range(len(cn)):
+        carbon_list = cn[n]
+        hydrogen_list = hn[n]
+        #plotting carbon backbone
+        x, y, z = convert_xyz(carbon_list)
+        ax.plot(x, y, z, marker='o')
+
+        if hydrogen_plotting:
+            # hydrogens plotting (units of CH2 and CH3 connected)
+            h_index = 3  # start on
+            for i, c in enumerate(carbon_list):
+                if i == 0:
+                    for h in hydrogen_list[0:3]:
+                        x, y, z = convert_xyz([h] + [c])
+                        plt.plot(x, y, z, marker="o", color="black", alpha=0.05)
+                elif i == len(carbon_list) - 1:
+                    for h in hydrogen_list[-3:]:
+                        x, y, z = convert_xyz([h] + [c])
+                        plt.plot(x, y, z, marker="o", color="black", alpha=0.05)
+                else:
+                    x, y, z = convert_xyz([hydrogen_list[h_index], c, hydrogen_list[h_index + 1]])
+                    plt.plot(x, y, z, marker="o", color="black", alpha=0.05)
+                    h_index += 2
+
+    plt.show()
