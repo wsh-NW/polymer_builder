@@ -3,9 +3,6 @@ import matplotlib.pyplot as plt
 import Utility_Functions as uf
 import math
 
-# TODO: add script to print out positions for lammps
-# TODO CONTINUE: include Pt and make realistic for box
-
 class Polymer:
     """
     Simple Polymer Class
